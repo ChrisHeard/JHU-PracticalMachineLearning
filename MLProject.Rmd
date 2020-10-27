@@ -1,0 +1,110 @@
+``` {r preloads, message=FALSE, echo=FALSE}
+
+library(ggplot2)
+library(caret)
+library(rpart)
+library("RGtk2")
+library(rattle)
+library(corrplot)
+
+```
+
+# Practical Machine Learning - Exercise Analysis
+
+## Executive Summary
+
+This mini-project tested out three machine learning methods to see which had the most effective application to the problem of classifying a persons limb movement to a style of exercise performance. While all three showed capability of modelling the processes, the random forest method and boosting method should prove to be the most effective, although they are almost the most computationally resource draining which should be considered when designing a solution such as this.
+
+## Introduction
+
+To begin, the data was loaded and inspected for any unnecessary variables. Many columns were found to contain almost entirely NA values or had little to no variance throughout. These columns were detected via algorithm and removed from the training data as they are not useful for modeling purposes. Further, the columns pertaining to candidate information or dates and times were also removed as well.
+
+``` {r dataload}
+
+testing  <- read.csv("pml-testing.csv")
+training <- read.csv("pml-training.csv")
+
+rm_var <- which(sapply(training, function(x) mean(is.na(x)) > 0.95))
+rm_var <- unique(c(1:5,rm_var,nearZeroVar(training)))
+
+testing <- testing[-rm_var]
+training <- training[-rm_var]
+rm(rm_var)
+
+```
+
+Execution of the above code reduced the number of variables from 160 to just 53. The large testing dataset can now be split into TrainData and TestData groups.
+
+```{r datasplit}
+
+split  <- createDataPartition(training$classe, p=0.75, list=FALSE)
+TrainData <- training[split, ]
+TestData  <- training[-split, ]
+
+```
+
+## Training Models
+
+```{r correlations}
+
+cor_mat <- cor(TrainData[,-54])
+
+corrplot(cor_mat, method = "color", type = "upper",
+         insig = "label_sig", pch.col = "white", order = "AOE",
+         tl.col = "black", tl.cex = 0.5)
+
+
+```
+Some variables are correlated with only a couple of others, albeit very strongly. Given that the target variable is qualitative while all the potential predictors are quantitative it seems appropriate to not remove any from the predictor pool.
+
+### Decision Tree
+
+```{r decisiontree}
+
+set.seed(12345)
+decisionTreeMod <- rpart(classe ~ ., data=TrainData, method="class")
+fancyRpartPlot(decisionTreeMod)
+
+predictTreeMod1 <- predict(decisionTreeMod, TestData, type = "class")
+TestDataTree <- factor(TestData$classe,c("A","B","C","D","E"))
+cmtree <- confusionMatrix(TestDataTree, predictTreeMod1)
+cmtree
+
+```
+The classification trees achieved a reasonable accuracy score of 71.9%
+
+### Random Forest
+
+```{r rforest}
+
+tC <- trainControl(method = "cv", number = 3, p = .9,returnResamp="all")
+randForestMod <- train(classe ~ ., data=TrainData, method="rf",
+                          trControl=tC)
+
+predictRandForestMod <- predict(randForestMod, TestData, type = "raw")
+cmRandForestMod <- confusionMatrix(TestDataTree, predictRandForestMod)
+
+cmRandForestMod
+
+```
+The random forest method achieved an extrremely high accuracy rating of 99.9%.
+
+### Boosting
+
+```{r boost}
+
+boostMod  <- train(classe ~ ., data=TrainData, method = "gbm", trControl = tC, verbose = FALSE)
+
+predictBoostMod <- predict(boostMod, TestData, type = "raw")
+
+
+cmBoostMod <- confusionMatrix(TestDataTree, predictBoostMod)
+cmBoostMod
+
+```
+The boosting method achieved a very high accuracy rating of 99.0%.
+
+
+## Conclusion
+
+Both the random forest method and the boosting method achieved very high accuracy ratings for the given data-set. The random forest method edged out at nearly 99.8% accuracy, this is such a high result that it would seem that the model overfit the data, alternatively there could be some variables that are overwhelmingly predictive or outright directly correlated with the target variable that the algorithm picked up on.
